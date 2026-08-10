@@ -6,6 +6,7 @@
 #   ./run.sh --churn uniform       the adversarial regime where incremental stops winning
 #   ./run.sh --parallel            both engines at once, for the side-by-side race
 #   ./run.sh --mem 2g --cpus 2     change the box both engines run in
+#   ./run.sh --clean               delete the generated lake and fact tables, then exit
 #
 # Sequential is the default because it is the mode whose numbers can be trusted: the two
 # containers are separately capped but still share one disk, and nothing in either cap
@@ -21,6 +22,7 @@ SCALE=demo
 CHURN=recent
 MODE=sequential
 SKIP_GEN=0
+CLEAN=0
 export ENGINE_MEM=${ENGINE_MEM:-3g}
 export ENGINE_CPUS=${ENGINE_CPUS:-2.0}
 export DRIVER_MEM=${DRIVER_MEM:-1400m}
@@ -35,6 +37,7 @@ while [[ $# -gt 0 ]]; do
     --cpus) export ENGINE_CPUS="$2"; shift 2;;
     --driver-mem) export DRIVER_MEM="$2"; shift 2;;
     --skip-gen) SKIP_GEN=1; shift;;
+    --clean) CLEAN=1; shift;;
     # --help reprints the header block verbatim. The line range is hardcoded, so adding or
     # removing a line up there silently truncates the help text -- keep 2,14 in sync.
     -h|--help) sed -n '2,14p' "$0"; exit 0;;
@@ -45,6 +48,21 @@ export SCALE CHURN
 
 green() { printf '\033[32m%s\033[0m\n' "$1"; }
 red() { printf '\033[31m%s\033[0m\n' "$1"; }
+
+# A run leaves the generated lake and both fact tables on disk -- tens of MB at demo,
+# more at stress. They are NOT deleted automatically, and that is deliberate: when the
+# correctness gate fails, data/out_vanilla and data/out_incremental are the only evidence
+# of HOW they differ, and deleting them on exit would throw that away at exactly the
+# moment it matters. The lake is also a cache the .stamp check reuses across runs.
+# So: keep it, but never silently -- the footprint is printed at the end, and this
+# removes it on demand. results/ is committed evidence; `git checkout results` restores it.
+if [[ $CLEAN -eq 1 ]]; then
+  green "==> removing generated data (results/ is committed and is left alone)"
+  du -sh data 2>/dev/null || true
+  rm -rf data
+  green "done. results/ and results-smoke/ kept."
+  exit 0
+fi
 
 if ! docker info >/dev/null 2>&1; then
   red "docker is not responding. Run ./scripts/install-brew.sh, then: open -a OrbStack"
@@ -122,6 +140,9 @@ fi
 
 green "==> report"
 uv run python -m dashboard.report --results ./results
+
+green "==> disk footprint left behind (./run.sh --clean removes it)"
+du -sh data 2>/dev/null || true
 
 # The gate has to actually fail the run. The README calls it the thing that makes every
 # other number meaningful, so a red message followed by exit 0 would be theatre: CI would

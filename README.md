@@ -325,7 +325,21 @@ it never competes for the budget being measured. Four charts:
 ./run.sh --mem 2g --cpus 2       # shrink the box; the breaking point moves earlier
 ./run.sh --churn uniform         # the regime where incremental stops winning
 ./run.sh --parallel              # both engines at once, for the side-by-side race
+./run.sh --clean                 # delete the generated data, then exit
 ```
+
+### What a run leaves on disk
+
+A run writes the generated lake and both fact tables under `data/` — **~77MB at `demo`,
+several hundred MB at `stress`**. It is not deleted automatically, on purpose: when the
+correctness gate fails, `data/out_vanilla` and `data/out_incremental` are the only record
+of *how* the two engines diverged, and clearing them on exit would destroy that evidence
+exactly when it matters. The lake is also a cache — a second run at the same scale reuses
+it instead of regenerating.
+
+Every run prints its footprint at the end, and `./run.sh --clean` removes it. `results/`
+and `results-smoke/` are committed evidence for the README's numbers and are left alone
+(≈70KB; `git checkout results` restores them if you delete them).
 
 Both containers get identical `cpus`, `mem_limit` and `memswap_limit` (no swap escape
 hatch), and identical `spark.driver.memory` and shuffle settings. Sequential is the
