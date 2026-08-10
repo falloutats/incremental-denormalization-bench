@@ -1,0 +1,9 @@
+{
+  "identical": true,
+  "vanilla_rows": 2950000,
+  "incremental_rows": 2950000,
+  "only_in_vanilla": 0,
+  "only_in_incremental": 0,
+  "duplicate_ids_vanilla": 0,
+  "duplicate_ids_incremental": 0
+}

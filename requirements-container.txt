@@ -1,0 +1,6 @@
+# Container-side only: the engines and the generator.
+# The dashboard (rich, plotext) runs on the host and is installed via uv/pyproject.toml,
+# deliberately kept out of the image so it never competes for the container's CPU budget.
+pyspark==3.5.3
+pyarrow>=17.0.0
+numpy>=1.26,<2.0

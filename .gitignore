@@ -1,0 +1,11 @@
+# The generated lake and the two fact tables: tens of MB, fully reproducible from ./run.sh.
+data/
+
+# results/ and results-smoke/ are deliberately NOT ignored. Together they are ~40KB of
+# JSONL and they are the evidence for every number in the README — results/ holds the demo
+# run, results-smoke/ the smoke run the "it loses at small scale" section cites. Without
+# them a reader has to take the claims on trust or spend 20 minutes regenerating them.
+.venv/
+__pycache__/
+*.pyc
+uv.lock

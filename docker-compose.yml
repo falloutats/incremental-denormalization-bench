@@ -1,0 +1,75 @@
+# Two engines, two containers, identical resource caps.
+#
+# The caps are the experiment. `cpus` and `mem_limit` are set to the same values for both
+# services, and the engines assert a matching Spark config fingerprint at startup, so the
+# only variable left is what each one chooses to read.
+#
+# mem_limit is a hard ceiling: exceed it and the kernel OOM-kills the JVM. That is not a
+# failure of the demo, it is the result -- a full refresh eventually cannot fit the join
+# it needs to do, and the run records exactly which tick and row count it died at.
+
+x-engine: &engine
+  build:
+    context: .
+    dockerfile: Dockerfile
+  # ---- the controlled environment. Change these together or not at all. ----
+  cpus: ${ENGINE_CPUS:-2.0}
+  mem_limit: ${ENGINE_MEM:-2g}
+  memswap_limit: ${ENGINE_MEM:-2g}   # no swap escape hatch; the limit means what it says
+  volumes:
+    - ./data/lake:/lake:ro           # identical input bytes, read-only for both
+    - ./results:/results
+  environment:
+    SPARK_LOCAL_IP: "127.0.0.1"
+  # Keep a killed container's exit code visible rather than restarting over the evidence.
+  restart: "no"
+
+services:
+  # Runs once, before the engines. Writes the deterministic tick sequence both will replay.
+  gen:
+    <<: *engine
+    cpus: ${GEN_CPUS:-4.0}
+    mem_limit: ${GEN_MEM:-4g}
+    memswap_limit: ${GEN_MEM:-4g}
+    volumes:
+      - ./data/lake:/lake             # writable here, read-only for the engines
+    command: ["src.generate", "--scale", "${SCALE:-demo}", "--churn", "${CHURN:-recent}",
+              "--lake", "/lake"]
+
+  vanilla:
+    <<: *engine
+    volumes:
+      - ./data/lake:/lake:ro
+      - ./data/out_vanilla:/out
+      - ./results:/results
+    command: ["src.run_engine", "--engine", "vanilla", "--scale", "${SCALE:-demo}",
+              "--threads", "${ENGINE_THREADS:-2}",
+              "--driver-mem", "${DRIVER_MEM:-1400m}",
+              "--shuffle-partitions", "${SHUFFLE_PARTITIONS:-16}"]
+
+  incremental:
+    <<: *engine
+    volumes:
+      - ./data/lake:/lake:ro
+      - ./data/out_incremental:/out
+      - ./results:/results
+    command: ["src.run_engine", "--engine", "incremental", "--scale", "${SCALE:-demo}",
+              "--threads", "${ENGINE_THREADS:-2}",
+              "--driver-mem", "${DRIVER_MEM:-1400m}",
+              "--shuffle-partitions", "${SHUFFLE_PARTITIONS:-16}"]
+
+  # Reads both fact tables and asserts they are row-for-row identical.
+  # If this fails, no performance number from the run means anything.
+  verify:
+    <<: *engine
+    cpus: ${GEN_CPUS:-4.0}
+    mem_limit: ${GEN_MEM:-4g}
+    memswap_limit: ${GEN_MEM:-4g}
+    volumes:
+      - ./data/out_vanilla:/out_vanilla:ro
+      - ./data/out_incremental:/out_incremental:ro
+      - ./results:/results
+    command: ["src.run_verify",
+              "--left", "/out_vanilla/payments_fact",
+              "--right", "/out_incremental/payments_fact",
+              "--results", "/results"]
